@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"sync"
+	"time"
 )
 
 // ServerError represents an error that has been returned from
@@ -103,11 +104,20 @@ func (client *Client) Go(ctx context.Context, serviceMethod string, args interfa
 
 // Call invokes the named function, waits for it to complete or context.Done(), and returns its error status.
 func (client *Client) Call(ctx context.Context, serviceMethod string, args interface{}, reply interface{}) error {
+	call := client.Go(ctx, serviceMethod, args, reply, make(chan *Call, 1))
 	select {
-	case call := <-client.Go(ctx, serviceMethod, args, reply, make(chan *Call, 1)).Done:
-		return call.Error
+	case cc := <-call.Done:
+		return cc.Error
 	case <-ctx.Done():
-		return ctx.Err()
+		var reply string
+		tm := time.NewTimer(time.Second * 3)
+		select {
+		case cc := <-client.Go(ctx, "__goRPC__.Cancel", call.RequestID, &reply, make(chan *Call, 1)).Done:
+			tm.Stop()
+			return cc.Error
+		case <-tm.C:
+			return ctx.Err()
+		}
 	}
 }
 
@@ -133,6 +143,8 @@ func (client *Client) send(ctx context.Context, call *Call) {
 	client.request.ID = requestID
 	client.request.ServiceMethod = call.ServiceMethod
 	client.request.Header = ContextHeader(ctx)
+
+	call.RequestID = requestID
 
 	// Execute the request
 	err := client.codec.WriteRequest(&client.request, call.Args)

@@ -26,21 +26,27 @@ type Server struct {
 	respLock    sync.Mutex // protects freeResp
 	freeResp    *Response
 	middlewares []middleware
+	cancelPrc   *CancelProcessor
 }
 
 // NewServer returns a new Server.
 func NewServer() *Server {
-	return &Server{}
+	s := &Server{
+		cancelPrc: newRpcCancelProcessor(),
+	}
+	s.RegisterName("__goRPC__", newRpcCancelService(s.cancelPrc))
+	return s
 }
 
 // Register publishes in the server the set of methods of the
 // receiver value that satisfy the following conditions:
-//	- exported method of exported type
-//	- three arguments
-//  - the first argument is a context.Context
-//  - the second argument is an exported type
-//	- the third argument is a pointer and an exported type
-//	- one return value, of type error
+//   - exported method of exported type
+//   - three arguments
+//   - the first argument is a context.Context
+//   - the second argument is an exported type
+//   - the third argument is a pointer and an exported type
+//   - one return value, of type error
+//
 // It returns an error if the receiver is not an exported type or has
 // no suitable methods. It also logs the error using package log.
 // The client accesses each method using a string of the form "Type.Method",
@@ -122,7 +128,7 @@ func (server *Server) ServeCodec(ctx context.Context, codec ServerCodec) {
 			continue
 		}
 		wg.Add(1)
-		go service.call(ctx, server, sending, wg, mtype, req, argv, replyv, codec)
+		go service.call(ctx, server, sending, wg, mtype, req, argv, replyv, codec, server.cancelPrc)
 	}
 
 	// We've seen that there are no more requests.
@@ -152,7 +158,7 @@ func (server *Server) ServeRequest(ctx context.Context, codec ServerCodec) error
 		return err
 	}
 
-	service.call(ctx, server, sending, nil, mtype, req, argv, replyv, codec)
+	service.call(ctx, server, sending, nil, mtype, req, argv, replyv, codec, server.cancelPrc)
 	return nil
 }
 
@@ -296,7 +302,12 @@ func (server *Server) freeRequest(req *Request) {
 	server.reqLock.Unlock()
 }
 
-func (s *service) call(ctx context.Context, server *Server, sending *sync.Mutex, wg *sync.WaitGroup, mtype *methodType, req *Request, argv, replyv reflect.Value, codec ServerCodec) {
+func (s *service) call(ctx context.Context, server *Server, sending *sync.Mutex, wg *sync.WaitGroup, mtype *methodType, req *Request, argv, replyv reflect.Value, codec ServerCodec, cancelPrc *CancelProcessor) {
+
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithCancel(ctx)
+	server.cancelPrc.Register(req.ID, cancel)
+
 	ctx = context.WithValue(ctx, contextID, req.ID)
 	ctx = context.WithValue(ctx, contextServiceMethod, req.ServiceMethod)
 	ctx = context.WithValue(ctx, contextHeader, req.Header)
@@ -343,4 +354,7 @@ func (s *service) call(ctx context.Context, server *Server, sending *sync.Mutex,
 
 	// cleanup
 	server.freeRequest(req)
+
+	server.cancelPrc.Unregister(req.ID)
+
 }

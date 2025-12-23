@@ -5,6 +5,7 @@ import "log"
 // Call represents an active RPC.
 type Call struct {
 	ServiceMethod string      // The name of the service and method to call.
+	RequestID     string      //
 	Args          interface{} // The argument to the function (*struct).
 	Reply         interface{} // The reply from the function (*struct).
 	Error         error       // After completion, the error status.
