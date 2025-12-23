@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/renevo/rpc"
+	"go.slink.ws/rpc"
 )
 
 // Client is a sample hellowworld client

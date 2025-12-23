@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/renevo/rpc"
-	"github.com/renevo/rpc/examples/helloworld"
+	"go.slink.ws/rpc"
+	"go.slink.ws/rpc/examples/helloworld"
 )
 
 func main() {
