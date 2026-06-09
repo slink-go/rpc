@@ -353,8 +353,8 @@ func (s *service) call(ctx context.Context, server *Server, sending *sync.Mutex,
 	}
 
 	// cleanup
-	server.freeRequest(req)
-
 	server.cancelPrc.Unregister(req.ID)
+
+	server.freeRequest(req)
 
 }
